@@ -1,6 +1,14 @@
-use actix_web::{web, App, HttpResponse, HttpServer};
+use actix_web::{http::StatusCode, web, App, HttpResponse, HttpServer};
 use async_std::io::prelude::WriteExt;
+use ed25519_dalek::{Keypair, Signature};
 use futures::StreamExt;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct ServerMessage {
+    message: Vec<u8>,
+    signature: Signature,
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -30,11 +38,10 @@ async fn download() -> actix_web::HttpResponse {
     HttpResponse::Ok().body(async_std::fs::read("file").await.unwrap())
 }
 
-async fn upload(mut payload: web::Payload) -> actix_web::HttpResponse {
-    let mut file = async_std::fs::File::create("file").await.unwrap();
-    while let Some(item) = payload.next().await {
-        file.write(&*item.unwrap()).await.unwrap();
-    }
+async fn upload(payload: web::Payload) -> actix_web::HttpResponse {
+    async_std::fs::write("file", test(payload).await.unwrap())
+        .await
+        .unwrap();
     async_std::fs::write(
         "rev",
         (async_std::fs::read_to_string("rev")
@@ -52,4 +59,22 @@ async fn upload(mut payload: web::Payload) -> actix_web::HttpResponse {
     .await
     .unwrap();
     HttpResponse::Ok().finish()
+}
+
+async fn test(mut payload: web::Payload) -> Result<Vec<u8>, HttpResponse> {
+    let mut bytes = Vec::new();
+    while let Some(item) = payload.next().await {
+        bytes.write(&*item.unwrap()).await.unwrap();
+    }
+    let server_message: ServerMessage = bincode::deserialize(bytes.as_slice()).unwrap();
+    let keypair = Keypair::from_bytes(std::fs::read("keyfile").unwrap().as_slice()).unwrap();
+    if keypair
+        .verify(server_message.message.as_slice(), &server_message.signature)
+        .is_ok()
+    {
+        Ok(server_message.message)
+    } else {
+        println!("forbidden");
+        Err(HttpResponse::new(StatusCode::FORBIDDEN))
+    }
 }

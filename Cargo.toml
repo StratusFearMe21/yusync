@@ -10,3 +10,7 @@ edition = "2018"
 actix-web = "*"
 async-std = "*"
 futures = "*"
+bincode = "*"
+rand = "*"
+ed25519-dalek = { version = "*", features = ["serde"] }
+serde = { version = "*", features = ["derive"] }
