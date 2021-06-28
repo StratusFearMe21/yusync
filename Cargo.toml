@@ -1,6 +1,6 @@
 [package]
 name = "yusync"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Isaac Mills <rooster0055@protonmail.com>"]
 edition = "2018"
 
@@ -14,3 +14,8 @@ bincode = "*"
 rand = "*"
 ed25519-dalek = { version = "*", features = ["serde"] }
 serde = { version = "*", features = ["derive"] }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
