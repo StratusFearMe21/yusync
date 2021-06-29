@@ -11,9 +11,10 @@ actix-web = "*"
 async-std = "*"
 futures = "*"
 bincode = "*"
-rand = "*"
-ed25519-dalek = { version = "*", features = ["serde"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
 serde = { version = "*", features = ["derive"] }
+crypto_box = "*"
+once_cell = "*"
 
 [profile.release]
 lto = "fat"
