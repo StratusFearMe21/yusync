@@ -1,3 +1,5 @@
+use std::borrow::Borrow;
+
 use actix_web::{web, App, HttpResponse, HttpServer};
 use async_std::io::prelude::WriteExt;
 use ed25519_dalek::{PublicKey, Signature, Verifier};
@@ -14,14 +16,26 @@ struct ServerMessage {
 async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
-            .route("/rev", web::get().to(rev))
+            .route("/request", web::post().to(request))
             .route("/upload", web::post().to(upload))
-            .route("/download", web::get().to(download))
             .route("/init", web::post().to(init))
     })
     .bind("127.0.0.1:8080")?
     .run()
     .await
+}
+
+async fn request(payload: web::Payload) -> HttpResponse {
+    match match verify_payload(payload).await {
+        Ok(s) => String::from_utf8(s).unwrap(),
+        Err(c) => return c,
+    }
+    .borrow()
+    {
+        "file" => HttpResponse::Ok().body(async_std::fs::read("file").await.unwrap()),
+        "rev" => HttpResponse::Ok().body(async_std::fs::read("rev").await.unwrap()),
+        _ => HttpResponse::InternalServerError().finish(),
+    }
 }
 
 async fn init(mut payload: web::Payload) -> HttpResponse {
@@ -37,20 +51,6 @@ async fn init(mut payload: web::Payload) -> HttpResponse {
         async_std::fs::write("file", "").await.unwrap();
 
         HttpResponse::Ok().finish()
-    }
-}
-
-async fn rev() -> HttpResponse {
-    match async_std::fs::read_to_string("rev").await {
-        Ok(s) => HttpResponse::Ok().body(s),
-        Err(_) => HttpResponse::InternalServerError().body("Try initializing the server first"),
-    }
-}
-
-async fn download() -> HttpResponse {
-    match async_std::fs::read_to_string("file").await {
-        Ok(s) => HttpResponse::Ok().body(s),
-        Err(_) => HttpResponse::InternalServerError().body("Try initializing the server first"),
     }
 }
 
