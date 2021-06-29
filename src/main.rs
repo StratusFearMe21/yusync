@@ -1,7 +1,6 @@
-use std::borrow::Borrow;
+use std::{borrow::Borrow, io::Write};
 
 use actix_web::{web, App, HttpResponse, HttpServer};
-use async_std::io::prelude::WriteExt;
 use crypto_box::{aead::Aead, Box, PublicKey, SecretKey};
 use futures::StreamExt;
 use once_cell::sync::Lazy;
@@ -41,10 +40,8 @@ async fn request(payload: web::Payload) -> HttpResponse {
     }
     .borrow()
     {
-        "file" => HttpResponse::Ok()
-            .body(encrypt_payload(async_std::fs::read("file").await.unwrap()).unwrap()),
-        "rev" => HttpResponse::Ok()
-            .body(encrypt_payload(async_std::fs::read("rev").await.unwrap()).unwrap()),
+        "file" => HttpResponse::Ok().body(encrypt_payload(std::fs::read("file").unwrap()).unwrap()),
+        "rev" => HttpResponse::Ok().body(encrypt_payload(std::fs::read("rev").unwrap()).unwrap()),
         _ => HttpResponse::InternalServerError().finish(),
     }
 }
@@ -53,22 +50,19 @@ async fn init(mut payload: web::Payload) -> HttpResponse {
     if std::path::Path::new("server_private").exists() {
         return HttpResponse::Forbidden().body("Server already initialized");
     } else {
-        let mut file = async_std::fs::File::create("client_public").await.unwrap();
+        let mut file = std::fs::File::create("client_public").unwrap();
         while let Some(item) = payload.next().await {
-            file.write(&*item.unwrap()).await.unwrap();
+            file.write(&*item.unwrap()).unwrap();
         }
 
-        async_std::fs::write("rev", "0").await.unwrap();
-        async_std::fs::write("file", "").await.unwrap();
+        std::fs::write("rev", "0").unwrap();
+        std::fs::write("file", "").unwrap();
 
         let server_key = SecretKey::generate(&mut OsRng);
 
-        async_std::fs::write("server_private", server_key.to_bytes())
-            .await
-            .unwrap();
+        std::fs::write("server_private", server_key.to_bytes()).unwrap();
 
-        HttpResponse::Ok()
-            .body(encrypt_payload(server_key.public_key().as_bytes().to_vec()).unwrap())
+        HttpResponse::Ok().body(server_key.public_key().as_bytes().to_vec())
     }
 }
 
@@ -77,24 +71,16 @@ async fn upload(payload: web::Payload) -> actix_web::HttpResponse {
         Ok(s) => s,
         Err(c) => return c,
     };
-    async_std::fs::write("file", verified_payload)
-        .await
-        .unwrap();
-    async_std::fs::write(
+    std::fs::write("file", verified_payload).unwrap();
+    std::fs::write(
         "rev",
-        (async_std::fs::read_to_string("rev")
-            .await
-            .unwrap_or_else(|_| {
-                let to_write = "0".to_string();
-                std::fs::write("rev", &to_write).unwrap();
-                to_write
-            })
+        (std::fs::read_to_string("rev")
+            .unwrap()
             .parse::<u32>()
             .unwrap()
             + 1)
         .to_string(),
     )
-    .await
     .unwrap();
     HttpResponse::Ok().finish()
 }
@@ -102,7 +88,7 @@ async fn upload(payload: web::Payload) -> actix_web::HttpResponse {
 async fn decrypt_payload(mut payload: web::Payload) -> Result<Vec<u8>, HttpResponse> {
     let mut bytes = Vec::new();
     while let Some(item) = payload.next().await {
-        bytes.write(&*item.unwrap()).await.unwrap();
+        bytes.write(&*item.unwrap()).unwrap();
     }
     let deserialized_payload: ServerMessage = bincode::deserialize(bytes.as_slice()).unwrap();
     match KEYBOX.decrypt(
